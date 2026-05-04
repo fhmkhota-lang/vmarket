@@ -1,14 +1,16 @@
 # VMarket
 
-VMarket is a static marketing-planning dashboard for `IOL`, `Title Sites`, and `Conde Naste`. It runs with plain HTML, CSS, and JavaScript, so it can be deployed directly to GitHub Pages without a backend.
+VMarket is a static AI-assisted marketing-planning dashboard for `IOL`, `Title Sites`, and `Conde Naste`. It runs with plain HTML, CSS, and JavaScript, so it can be deployed directly to GitHub Pages without a backend.
 
 ## What It Does
 
 - Starts with a clean, empty planner and three fixed brands
-- Tracks campaign and product plans in one place
+- Uses an AI strategy intake form to generate campaign direction
+- Tracks active campaigns in a dedicated campaign workspace
 - Captures the campaign brief: objective, audience, need, desire, and value proposition
 - Organizes delivery across `Design`, `Social`, `Content`, `Visuals`, and `Messaging`
-- Provides a live task board plus visibility/engagement/conversion tracking
+- Supports multiple platforms per campaign
+- Provides a task board and campaign notes
 - Stores data in browser `localStorage`
 - Supports JSON export/import for backups or sharing snapshots
 
@@ -41,5 +43,6 @@ Then open `http://127.0.0.1:4173`.
 
 - Because this is a static app, data is saved per browser using `localStorage`.
 - GitHub Pages does not provide shared team storage by default.
+- The AI workflow uses a browser-stored OpenAI API key. In a static GitHub Pages app, that key is not protected by a backend.
 - Use `Export` to download the current plan and `Import` to restore it elsewhere.
 - `Clear Data` removes all saved campaigns and returns the app to a blank state.

@@ -1,23 +1,21 @@
-const STORAGE_KEY = "vmarket-state-v2";
+const STORAGE_KEY = "vmarket-state-v3";
+const AI_SETTINGS_KEY = "vmarket-ai-settings-v1";
 
 const BRANDS = [
   {
     id: "brand-iol",
     name: "IOL",
-    description: "Central planning for IOL brand and product campaigns.",
-    tone: "Trusted, immediate, national"
+    description: "Central planning for IOL brand and product campaigns."
   },
   {
     id: "brand-title-sites",
     name: "Title Sites",
-    description: "Shared campaign planning across all title sites under one marketing approach.",
-    tone: "Scalable, local, consistent"
+    description: "Shared marketing planning across all title sites."
   },
   {
     id: "brand-conde-naste",
     name: "Conde Naste",
-    description: "Premium campaign planning for Conde Naste products and launches.",
-    tone: "Premium, polished, aspirational"
+    description: "Premium campaign planning for Conde Naste products."
   }
 ];
 
@@ -29,254 +27,170 @@ const CHANNELS = [
   { key: "messaging", label: "Messaging" }
 ];
 
-const STATUSES = [
-  { key: "not-started", label: "Not Started", weight: 0 },
-  { key: "in-progress", label: "In Progress", weight: 0.45 },
-  { key: "review", label: "Review", weight: 0.72 },
-  { key: "scheduled", label: "Scheduled", weight: 0.9 },
-  { key: "live", label: "Live", weight: 1 }
+const CAMPAIGN_STATUSES = [
+  { key: "draft", label: "Draft" },
+  { key: "active", label: "Active" },
+  { key: "paused", label: "Paused" },
+  { key: "complete", label: "Complete" }
 ];
 
-const METRICS = [
-  { key: "visibility", label: "Visibility", unit: "impressions" },
-  { key: "engagement", label: "Engagement", unit: "engagements" },
-  { key: "conversion", label: "Conversion", unit: "actions" }
+const TASK_STATUSES = [
+  { key: "planned", label: "Planned", weight: 0.15 },
+  { key: "in-progress", label: "In Progress", weight: 0.5 },
+  { key: "review", label: "Review", weight: 0.8 },
+  { key: "done", label: "Done", weight: 1 }
 ];
 
 const els = {
-  currentContextLabel: document.getElementById("currentContextLabel"),
+  pageTriggers: Array.from(document.querySelectorAll("[data-page-trigger]")),
+  pagePanels: Array.from(document.querySelectorAll("[data-page]")),
   heroStats: document.getElementById("heroStats"),
-  campaignSelect: document.getElementById("campaignSelect"),
-  brandSeedSelect: document.getElementById("brandSeedSelect"),
-  campaignForm: document.getElementById("campaignForm"),
-  portfolioGrid: document.getElementById("portfolioGrid"),
-  briefForm: document.getElementById("briefForm"),
-  messageForm: document.getElementById("messageForm"),
-  channelGrid: document.getElementById("channelGrid"),
-  statusPanel: document.getElementById("statusPanel"),
-  metricForm: document.getElementById("metricForm"),
-  taskForm: document.getElementById("taskForm"),
-  taskBoard: document.getElementById("taskBoard"),
-  noteForm: document.getElementById("noteForm"),
-  noteList: document.getElementById("noteList"),
   exportBtn: document.getElementById("exportBtn"),
   importBtn: document.getElementById("importBtn"),
   importInput: document.getElementById("importInput"),
-  resetBtn: document.getElementById("resetBtn")
+  resetBtn: document.getElementById("resetBtn"),
+  aiSettingsForm: document.getElementById("aiSettingsForm"),
+  apiKeyInput: document.getElementById("apiKeyInput"),
+  modelSelect: document.getElementById("modelSelect"),
+  strategyForm: document.getElementById("strategyForm"),
+  strategyBrand: document.getElementById("strategyBrand"),
+  strategyPlatformTags: document.getElementById("strategyPlatformTags"),
+  strategyPlatformInput: document.getElementById("strategyPlatformInput"),
+  addStrategyPlatformBtn: document.getElementById("addStrategyPlatformBtn"),
+  strategyOutput: document.getElementById("strategyOutput"),
+  strategyStatusText: document.getElementById("strategyStatusText"),
+  campaignList: document.getElementById("campaignList"),
+  campaignDetail: document.getElementById("campaignDetail")
 };
 
 let state = loadState();
+let aiSettings = loadAiSettings();
+let strategyPlatforms = [];
+let currentPage = "strategy";
 
 init();
 
 function init() {
-  hydrateBrandSeedSelect();
-  hydrateTaskChannels();
+  hydrateBrandOptions();
+  hydrateAiSettings();
   bindEvents();
+  syncPageFromHash();
   render();
 }
 
 function bindEvents() {
-  els.campaignSelect.addEventListener("change", (event) => {
-    state.activeCampaignId = event.target.value || null;
-    persist();
-    render();
-  });
-
-  els.campaignForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const brandId = String(formData.get("brandId") || "").trim();
-    const productName = String(formData.get("productName") || "").trim();
-    const owner = String(formData.get("owner") || "").trim();
-    const launchDate = String(formData.get("launchDate") || "").trim();
-
-    if (!brandId || !productName || !owner || !launchDate) return;
-
-    const campaign = createCampaign({
-      brandId,
-      product: productName,
-      owner,
-      launchDate
+  els.pageTriggers.forEach((trigger) => {
+    trigger.addEventListener("click", () => {
+      currentPage = trigger.dataset.pageTrigger;
+      location.hash = currentPage;
+      renderPageState();
     });
-
-    state.campaigns.unshift(campaign);
-    state.activeCampaignId = campaign.id;
-    event.currentTarget.reset();
-    hydrateBrandSeedSelect();
-    persist();
-    render();
   });
 
-  document.addEventListener("change", handleChange);
-  document.addEventListener("click", handleClick);
+  window.addEventListener("hashchange", () => {
+    syncPageFromHash();
+    renderPageState();
+  });
 
-  els.taskForm.addEventListener("submit", (event) => {
+  els.aiSettingsForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    const campaign = getActiveCampaign();
-    if (!campaign) return;
-
-    const formData = new FormData(event.currentTarget);
-    const title = String(formData.get("title") || "").trim();
-    const channel = String(formData.get("channel") || "").trim();
-    const owner = String(formData.get("owner") || "").trim();
-    const due = String(formData.get("due") || "").trim();
-
-    if (!title || !channel || !owner || !due) return;
-
-    campaign.tasks.unshift({
-      id: uid("task"),
-      title,
-      channel,
-      owner,
-      due,
-      status: "not-started"
-    });
-
-    event.currentTarget.reset();
-    hydrateTaskChannels();
-    persist();
-    render();
+    aiSettings.apiKey = els.apiKeyInput.value.trim();
+    aiSettings.model = els.modelSelect.value;
+    persistAiSettings();
+    els.strategyStatusText.textContent = aiSettings.apiKey
+      ? "AI settings saved in this browser."
+      : "AI key cleared. You can still plan campaigns manually.";
   });
 
-  els.noteForm.addEventListener("submit", (event) => {
+  els.addStrategyPlatformBtn.addEventListener("click", addStrategyPlatformFromInput);
+  els.strategyPlatformInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
     event.preventDefault();
-    const campaign = getActiveCampaign();
-    if (!campaign) return;
-
-    const formData = new FormData(event.currentTarget);
-    const noteText = String(formData.get("noteText") || "").trim();
-    if (!noteText) return;
-
-    campaign.notes.unshift({
-      id: uid("note"),
-      text: noteText,
-      stamp: new Date().toISOString()
-    });
-
-    event.currentTarget.reset();
-    persist();
-    render();
+    addStrategyPlatformFromInput();
   });
+
+  els.strategyForm.addEventListener("submit", handleStrategySubmit);
 
   els.exportBtn.addEventListener("click", exportState);
   els.importBtn.addEventListener("click", () => els.importInput.click());
   els.importInput.addEventListener("change", importState);
+
   els.resetBtn.addEventListener("click", () => {
-    if (!window.confirm("Clear all saved campaigns and reset VMarket to a blank state?")) return;
+    if (!window.confirm("Clear all campaigns and AI-generated strategy data?")) return;
     state = createInitialState();
-    persist();
+    strategyPlatforms = [];
+    persistState();
     render();
   });
+
+  document.addEventListener("change", handleFieldChange);
+  document.addEventListener("click", handleClickActions);
+  document.addEventListener("submit", handleEmbeddedForms);
 }
 
-function handleChange(event) {
-  const campaign = getActiveCampaign();
-  if (!campaign) return;
-
-  const { path, taskId, taskField, type } = event.target.dataset;
-  if (path) {
-    setByPath(campaign, path, castValue(event.target.value, type));
-    persist();
-    render();
-    return;
-  }
-
-  if (!taskId || !taskField) return;
-  const task = campaign.tasks.find((item) => item.id === taskId);
-  if (!task) return;
-  task[taskField] = castValue(event.target.value, type);
-  persist();
-  render();
-}
-
-function handleClick(event) {
-  const brandButton = event.target.closest("[data-brand-id]");
-  if (brandButton) {
-    const targetBrandId = brandButton.dataset.brandId;
-    const matchingCampaign = state.campaigns.find((campaign) => campaign.brandId === targetBrandId);
-    if (matchingCampaign) {
-      state.activeCampaignId = matchingCampaign.id;
-      persist();
-      render();
-    }
-    return;
-  }
-
-  const deleteTaskButton = event.target.closest("[data-delete-task]");
-  if (deleteTaskButton) {
-    const campaign = getActiveCampaign();
-    if (!campaign) return;
-    campaign.tasks = campaign.tasks.filter((task) => task.id !== deleteTaskButton.dataset.deleteTask);
-    persist();
-    render();
-  }
+function syncPageFromHash() {
+  const page = (location.hash || "#strategy").replace("#", "");
+  currentPage = els.pagePanels.some((panel) => panel.dataset.page === page) ? page : "strategy";
 }
 
 function render() {
-  const activeCampaign = getActiveCampaign();
-  const activeBrand = activeCampaign ? getBrand(activeCampaign.brandId) : null;
-
-  renderCampaignSelect(activeCampaign);
-  renderHero(activeCampaign);
-  renderBrands(activeCampaign);
-  renderBrief(activeCampaign, activeBrand);
-  renderMessaging(activeCampaign);
-  renderChannels(activeCampaign);
-  renderStatus(activeCampaign, activeBrand);
-  renderTasks(activeCampaign);
-  renderNotes(activeCampaign);
-  els.currentContextLabel.textContent = activeCampaign
-    ? `${activeBrand?.name || "Brand"} · ${activeCampaign.product}`
-    : "No campaign selected";
+  renderPageState();
+  renderHero();
+  renderStrategyPlatformTags();
+  renderStrategyOutput();
+  renderCampaignList();
+  renderCampaignDetail();
 }
 
-function renderCampaignSelect(activeCampaign) {
-  if (!state.campaigns.length) {
-    els.campaignSelect.innerHTML = `<option value="">No campaigns yet</option>`;
-    els.campaignSelect.disabled = true;
-    return;
-  }
+function renderPageState() {
+  els.pageTriggers.forEach((trigger) => {
+    trigger.classList.toggle("is-active", trigger.dataset.pageTrigger === currentPage);
+  });
 
-  els.campaignSelect.disabled = false;
-  els.campaignSelect.innerHTML = state.campaigns
-    .map((campaign) => {
-      const brand = getBrand(campaign.brandId);
-      const label = `${brand?.name || "Brand"} | ${campaign.product}`;
-      return `<option value="${campaign.id}" ${campaign.id === activeCampaign?.id ? "selected" : ""}>${escapeHtml(label)}</option>`;
-    })
-    .join("");
+  els.pagePanels.forEach((panel) => {
+    panel.classList.toggle("is-active", panel.dataset.page === currentPage);
+  });
 }
 
-function renderHero(activeCampaign) {
+function hydrateBrandOptions() {
+  els.strategyBrand.innerHTML = BRANDS.map(
+    (brand) => `<option value="${brand.id}">${escapeHtml(brand.name)}</option>`
+  ).join("");
+}
+
+function hydrateAiSettings() {
+  els.apiKeyInput.value = aiSettings.apiKey || "";
+  els.modelSelect.value = aiSettings.model || "gpt-5-mini";
+}
+
+function renderHero() {
   const campaignCount = state.campaigns.length;
-  const liveTasks = state.campaigns.reduce(
-    (sum, campaign) => sum + campaign.tasks.filter((task) => task.status === "live").length,
-    0
-  );
-  const upcomingLaunches = state.campaigns.filter((campaign) => getDaysUntil(campaign.launchDate) >= 0).length;
-  const activeProgress = activeCampaign ? Math.round(getCampaignProgress(activeCampaign)) : 0;
+  const activeCount = state.campaigns.filter((campaign) => campaign.status === "active").length;
+  const totalPlatforms = state.campaigns.reduce((sum, campaign) => sum + campaign.platforms.length, 0);
+  const averageProgress = campaignCount
+    ? Math.round(state.campaigns.reduce((sum, campaign) => sum + getCampaignProgress(campaign), 0) / campaignCount)
+    : 0;
 
   const stats = [
     {
       label: "Campaigns",
       value: String(campaignCount),
-      sub: campaignCount ? "Active workspaces in planning" : "Create your first campaign"
+      sub: campaignCount ? "Campaigns stored in this workspace" : "No campaigns created yet"
     },
     {
-      label: "Progress",
-      value: `${activeProgress}%`,
-      sub: activeCampaign ? "Current campaign completion" : "No active campaign yet"
+      label: "Active Campaigns",
+      value: String(activeCount),
+      sub: activeCount ? "Campaigns currently marked active" : "No active campaigns yet"
     },
     {
-      label: "Upcoming Launches",
-      value: String(upcomingLaunches),
-      sub: "Campaigns with future or current launch dates"
+      label: "Platforms",
+      value: String(totalPlatforms),
+      sub: totalPlatforms ? "Mapped across all campaigns" : "No platforms added yet"
     },
     {
-      label: "Live Tasks",
-      value: String(liveTasks),
-      sub: "Tasks already running live"
+      label: "Task Progress",
+      value: `${averageProgress}%`,
+      sub: campaignCount ? "Average completion across campaign tasks" : "Task progress starts after planning"
     }
   ];
 
@@ -293,236 +207,269 @@ function renderHero(activeCampaign) {
     .join("");
 }
 
-function renderBrands(activeCampaign) {
-  els.portfolioGrid.innerHTML = BRANDS.map((brand) => {
-    const count = state.campaigns.filter((campaign) => campaign.brandId === brand.id).length;
-    return `
-      <button
-        class="brand-card ${activeCampaign?.brandId === brand.id ? "is-active" : ""}"
-        type="button"
-        data-brand-id="${brand.id}"
-      >
-        <p class="brand-card__title">${escapeHtml(brand.name)}</p>
-        <p class="brand-card__desc">${escapeHtml(brand.description)}</p>
-        <p class="brand-card__meta">${count} campaign${count === 1 ? "" : "s"} · ${escapeHtml(brand.tone)}</p>
-      </button>
-    `;
-  }).join("");
+function renderStrategyPlatformTags() {
+  els.strategyPlatformTags.innerHTML = strategyPlatforms.length
+    ? strategyPlatforms
+        .map(
+          (platform, index) => `
+            <span class="tag">
+              ${escapeHtml(platform)}
+              <button type="button" data-remove-strategy-platform="${index}" aria-label="Remove ${escapeAttr(platform)}">&times;</button>
+            </span>
+          `
+        )
+        .join("")
+    : `<div class="empty-state">Add one or more platforms for the AI strategy to plan against.</div>`;
 }
 
-function renderBrief(campaign, brand) {
-  if (!campaign) {
-    els.briefForm.innerHTML = emptyState("Create a campaign to start writing the brief.");
+function renderStrategyOutput() {
+  const campaign = getActiveCampaign();
+  if (!campaign?.aiStrategy) {
+    els.strategyOutput.innerHTML = emptyState(
+      "Generated strategy will appear here after you answer the intake questions."
+    );
     return;
   }
 
-  els.briefForm.innerHTML = `
-    <div class="field">
-      <label for="campaignProduct">Campaign / product</label>
-      <input id="campaignProduct" data-path="product" value="${escapeAttr(campaign.product)}">
-    </div>
-    <div class="field">
-      <label for="campaignStage">Stage</label>
-      <select id="campaignStage" data-path="stage">
-        ${renderOptions(["planning", "building", "review", "scheduled", "live"], campaign.stage)}
-      </select>
-    </div>
-    <div class="field">
-      <label for="campaignBrand">Brand</label>
-      <input id="campaignBrand" value="${escapeAttr(brand?.name || "")}" disabled>
-    </div>
-    <div class="field">
-      <label for="campaignOwner">Campaign owner</label>
-      <input id="campaignOwner" data-path="owner" value="${escapeAttr(campaign.owner)}">
-    </div>
-    <div class="field">
-      <label for="campaignLaunch">Launch date</label>
-      <input id="campaignLaunch" type="date" data-path="launchDate" value="${escapeAttr(campaign.launchDate)}">
-    </div>
-    <div class="field">
-      <label for="campaignAudienceShort">Audience label</label>
-      <input id="campaignAudienceShort" data-path="audienceLabel" value="${escapeAttr(campaign.audienceLabel)}">
-    </div>
-    <div class="field field--full">
-      <label for="campaignObjective">Objective</label>
-      <textarea id="campaignObjective" rows="3" data-path="objective">${escapeHtml(campaign.objective)}</textarea>
-    </div>
-    <div class="field field--full">
-      <label for="campaignAudience">Audience</label>
-      <textarea id="campaignAudience" rows="3" data-path="audience">${escapeHtml(campaign.audience)}</textarea>
-    </div>
-    <div class="field field--full">
-      <label for="campaignNeed">Need</label>
-      <textarea id="campaignNeed" rows="3" data-path="need">${escapeHtml(campaign.need)}</textarea>
-    </div>
-    <div class="field field--full">
-      <label for="campaignDesire">Desire</label>
-      <textarea id="campaignDesire" rows="3" data-path="desire">${escapeHtml(campaign.desire)}</textarea>
-    </div>
-    <div class="field field--full">
-      <label for="campaignValue">Value proposition</label>
-      <textarea id="campaignValue" rows="3" data-path="value">${escapeHtml(campaign.value)}</textarea>
+  const strategy = campaign.aiStrategy;
+  els.strategyOutput.innerHTML = `
+    <div class="strategy-output">
+      <div class="strategy-block">
+        <h4>${escapeHtml(campaign.name)}</h4>
+        <p>${escapeHtml(strategy.summary)}</p>
+        <p><button class="button button--solid" type="button" data-open-active-campaign>Open Active Campaign</button></p>
+      </div>
+      <div class="strategy-block">
+        <h4>Core Message</h4>
+        <p>${escapeHtml(campaign.messaging.core || "Not set")}</p>
+        <p>${escapeHtml(campaign.messaging.support || "")}</p>
+      </div>
+      <div class="strategy-block">
+        <h4>Creative Direction</h4>
+        <p>${escapeHtml(strategy.creativeDirection || "Not generated")}</p>
+      </div>
+      <div class="strategy-block">
+        <h4>Platform Plan</h4>
+        <ul class="strategy-list">
+          ${campaign.platforms
+            .map((platform) => `<li>${escapeHtml(platform.name)}: ${escapeHtml(platform.focus || "No focus set")}</li>`)
+            .join("")}
+        </ul>
+      </div>
+      <div class="strategy-block">
+        <h4>Content Angles</h4>
+        <ul class="strategy-list">
+          ${(strategy.contentAngles || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+        </ul>
+      </div>
+      <div class="strategy-block">
+        <h4>Success Signals</h4>
+        <ul class="strategy-list">
+          ${(strategy.successSignals || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+        </ul>
+      </div>
     </div>
   `;
 }
 
-function renderMessaging(campaign) {
-  if (!campaign) {
-    els.messageForm.innerHTML = emptyState("Select or create a campaign to define the message.");
+function renderCampaignList() {
+  const campaigns = state.campaigns.slice();
+  if (!campaigns.length) {
+    els.campaignList.innerHTML = emptyState("No campaigns yet. Generate one from the AI Strategy Builder.");
     return;
   }
 
-  els.messageForm.innerHTML = `
-    <div class="field field--full">
-      <label for="messageCore">Core message</label>
-      <textarea id="messageCore" rows="3" data-path="messaging.core">${escapeHtml(campaign.messaging.core)}</textarea>
-    </div>
-    <div class="field field--full">
-      <label for="messageSupport">Support line</label>
-      <textarea id="messageSupport" rows="3" data-path="messaging.support">${escapeHtml(campaign.messaging.support)}</textarea>
-    </div>
-    <div class="field">
-      <label for="messageCTA">Call to action</label>
-      <input id="messageCTA" data-path="messaging.cta" value="${escapeAttr(campaign.messaging.cta)}">
-    </div>
-    <div class="field">
-      <label for="messageProof">Proof point</label>
-      <input id="messageProof" data-path="messaging.proof" value="${escapeAttr(campaign.messaging.proof)}">
-    </div>
-    <div class="field field--full">
-      <label for="messageNotes">Message notes</label>
-      <textarea id="messageNotes" rows="5" data-path="messaging.notes">${escapeHtml(campaign.messaging.notes)}</textarea>
-    </div>
-  `;
+  els.campaignList.innerHTML = `<div class="campaign-list">${campaigns
+    .map((campaign) => {
+      const brand = getBrand(campaign.brandId);
+      return `
+        <button class="campaign-card ${campaign.id === state.activeCampaignId ? "is-active" : ""}" type="button" data-select-campaign="${campaign.id}">
+          <p class="campaign-card__title">${escapeHtml(campaign.name)}</p>
+          <p class="campaign-card__meta">${escapeHtml(brand?.name || "Brand")} · ${escapeHtml(getCampaignStatusLabel(campaign.status))}</p>
+          <p class="campaign-card__meta">${campaign.platforms.length} platform${campaign.platforms.length === 1 ? "" : "s"} · ${campaign.tasks.length} task${campaign.tasks.length === 1 ? "" : "s"}</p>
+        </button>
+      `;
+    })
+    .join("")}</div>`;
 }
 
-function renderChannels(campaign) {
+function renderCampaignDetail() {
+  const campaign = getActiveCampaign();
   if (!campaign) {
-    els.channelGrid.innerHTML = emptyState("Create a campaign to map the workstreams.");
+    els.campaignDetail.innerHTML = emptyState("Select a campaign to view and edit the campaign workspace.");
     return;
   }
 
-  els.channelGrid.innerHTML = CHANNELS.map((channel) => {
-    const tasks = campaign.tasks.filter((task) => task.channel === channel.key);
-    const progress = Math.round(getChannelProgress(tasks));
-    return `
-      <article class="channel-card">
-        <div class="channel-card__top">
-          <h4 class="channel-card__title">${escapeHtml(channel.label)}</h4>
-          <span class="progress-pill">${progress}%</span>
-        </div>
-        <div class="channel-card__fields">
-          <div class="field">
-            <label for="channel-owner-${channel.key}">Owner</label>
-            <input
-              id="channel-owner-${channel.key}"
-              data-path="channels.${channel.key}.owner"
-              value="${escapeAttr(campaign.channels[channel.key].owner)}"
-            >
+  const brand = getBrand(campaign.brandId);
+  const strategy = campaign.aiStrategy || null;
+
+  els.campaignDetail.innerHTML = `
+    <div class="campaign-detail">
+      <div class="campaign-header">
+        <div class="campaign-header__top">
+          <div>
+            <p class="eyebrow">${escapeHtml(brand?.name || "Brand")}</p>
+            <h3>${escapeHtml(campaign.name)}</h3>
+            <p class="campaign-header__meta">${escapeHtml(campaign.owner || "No owner")} · ${campaign.platforms.length} platform${campaign.platforms.length === 1 ? "" : "s"}</p>
           </div>
           <div class="field">
-            <label for="channel-focus-${channel.key}">Plan</label>
-            <textarea
-              id="channel-focus-${channel.key}"
-              rows="2"
-              data-path="channels.${channel.key}.focus"
-            >${escapeHtml(campaign.channels[channel.key].focus)}</textarea>
+            <label for="campaign-status">Campaign status</label>
+            <select id="campaign-status" data-path="status">
+              ${renderOptions(CAMPAIGN_STATUSES.map((item) => item.key), campaign.status, getCampaignStatusLabels())}
+            </select>
           </div>
         </div>
-      </article>
-    `;
-  }).join("");
-}
-
-function renderStatus(campaign, brand) {
-  if (!campaign) {
-    els.statusPanel.innerHTML = emptyState("No campaign selected.");
-    els.metricForm.innerHTML = "";
-    return;
-  }
-
-  const progress = Math.round(getCampaignProgress(campaign));
-  const daysUntilLaunch = getDaysUntil(campaign.launchDate);
-  const launchLine =
-    daysUntilLaunch > 0
-      ? `${daysUntilLaunch} days until launch`
-      : daysUntilLaunch === 0
-        ? "Launch day is today"
-        : `${Math.abs(daysUntilLaunch)} days past launch date`;
-
-  els.statusPanel.innerHTML = `
-    <div class="status-summary">
-      <p class="status-summary__name">${escapeHtml(brand?.name || "Brand")} · ${escapeHtml(campaign.product)}</p>
-      <p class="status-summary__line">Stage: ${escapeHtml(campaign.stage)} · ${progress}% task progress</p>
-      <p class="status-summary__line">Launch: ${escapeHtml(formatDate(campaign.launchDate))} · ${escapeHtml(launchLine)}</p>
-    </div>
-  `;
-
-  els.metricForm.innerHTML = METRICS.map((metric) => {
-    const values = campaign.metrics[metric.key];
-    const percent = Math.round(getMetricProgress(values));
-    return `
-      <section class="metric-card">
-        <div class="metric-card__top">
-          <h4>${escapeHtml(metric.label)}</h4>
-          <span>${percent}% of target</span>
+        <div class="pill-group">
+          ${campaign.platforms.length
+            ? campaign.platforms.map((platform) => `<span class="pill">${escapeHtml(platform.name)}</span>`).join("")
+            : `<span class="pill">No platforms yet</span>`}
         </div>
-        <div class="progress" aria-hidden="true">
-          <span style="width:${Math.min(percent, 100)}%"></span>
-        </div>
-        <div class="metric-card__inputs">
-          <div class="field">
-            <label for="${metric.key}-target">Target ${escapeHtml(metric.unit)}</label>
-            <input
-              id="${metric.key}-target"
-              type="number"
-              min="0"
-              data-path="metrics.${metric.key}.target"
-              data-type="number"
-              value="${escapeAttr(values.target)}"
-            >
+      </div>
+
+      <div class="detail-grid">
+        <section class="detail-section">
+          <h4>Brief</h4>
+          ${renderCampaignField("Campaign name", "name", campaign.name)}
+          ${renderCampaignField("Owner", "owner", campaign.owner)}
+          ${renderCampaignField("Audience label", "audienceLabel", campaign.audienceLabel)}
+          ${renderCampaignArea("Objective", "objective", campaign.objective)}
+          ${renderCampaignArea("Audience", "audience", campaign.audience)}
+          ${renderCampaignArea("Need", "need", campaign.need)}
+          ${renderCampaignArea("Desire", "desire", campaign.desire)}
+          ${renderCampaignArea("Value proposition", "value", campaign.value)}
+        </section>
+
+        <section class="detail-section">
+          <h4>Messaging</h4>
+          ${renderCampaignArea("Core message", "messaging.core", campaign.messaging.core)}
+          ${renderCampaignArea("Support line", "messaging.support", campaign.messaging.support)}
+          ${renderCampaignField("CTA", "messaging.cta", campaign.messaging.cta)}
+          ${renderCampaignField("Proof point", "messaging.proof", campaign.messaging.proof)}
+        </section>
+
+        <section class="detail-section detail-section--full">
+          <h4>Platforms</h4>
+          <form class="platform-toolbar" data-platform-form>
+            <input name="name" type="text" placeholder="Platform name" required>
+            <input name="focus" type="text" placeholder="Focus or role for this platform">
+            <input name="owner" type="text" placeholder="Platform owner">
+            <button class="button button--solid" type="submit">Add Platform</button>
+          </form>
+          <div class="platform-list">
+            ${
+              campaign.platforms.length
+                ? campaign.platforms.map((platform) => renderPlatformCard(platform)).join("")
+                : emptyState("No platforms added to this campaign yet.")
+            }
           </div>
-          <div class="field">
-            <label for="${metric.key}-actual">Current ${escapeHtml(metric.unit)}</label>
-            <input
-              id="${metric.key}-actual"
-              type="number"
-              min="0"
-              data-path="metrics.${metric.key}.actual"
-              data-type="number"
-              value="${escapeAttr(values.actual)}"
-            >
+        </section>
+
+        <section class="detail-section detail-section--full">
+          <h4>Workstreams</h4>
+          <div class="detail-grid">
+            ${CHANNELS.map((channel) => `
+              <div class="field">
+                <label for="workstream-${channel.key}">${escapeHtml(channel.label)}</label>
+                <textarea id="workstream-${channel.key}" rows="3" data-path="workstreams.${channel.key}">${escapeHtml(
+                  campaign.workstreams[channel.key]
+                )}</textarea>
+              </div>
+            `).join("")}
           </div>
-        </div>
-      </section>
-    `;
-  }).join("");
-}
+        </section>
 
-function renderTasks(campaign) {
-  if (!campaign) {
-    els.taskBoard.innerHTML = emptyState("Create a campaign to start assigning work.");
-    return;
-  }
-
-  els.taskBoard.innerHTML = STATUSES.map((status) => {
-    const tasks = campaign.tasks.filter((task) => task.status === status.key);
-    return `
-      <section class="board-column">
-        <div class="board-column__head">
-          <h4>${escapeHtml(status.label)}</h4>
-          <span class="count">${tasks.length}</span>
-        </div>
-        <div class="task-stack">
+        <section class="detail-section detail-section--full">
+          <h4>AI Strategy</h4>
           ${
-            tasks.length
-              ? tasks.map((task) => renderTaskCard(task)).join("")
-              : emptyState("No tasks in this stage.")
+            strategy
+              ? `
+                <p>${escapeHtml(strategy.summary || "No summary available.")}</p>
+                <p>${escapeHtml(strategy.creativeDirection || "")}</p>
+                <div class="pill-group">
+                  ${(strategy.contentAngles || []).map((item) => `<span class="pill">${escapeHtml(item)}</span>`).join("")}
+                </div>
+              `
+              : emptyState("No AI strategy attached to this campaign yet.")
           }
+        </section>
+
+        <section class="detail-section detail-section--full">
+          <h4>Task Board</h4>
+          <form class="task-toolbar" data-task-form>
+            <input name="title" type="text" placeholder="Task title" required>
+            <select name="channel" required>
+              ${CHANNELS.map((channel) => `<option value="${channel.key}">${escapeHtml(channel.label)}</option>`).join("")}
+            </select>
+            <input name="owner" type="text" placeholder="Owner" required>
+            <button class="button button--solid" type="submit">Add Task</button>
+          </form>
+          <div class="task-board">
+            ${TASK_STATUSES.map((status) => renderTaskColumn(campaign, status)).join("")}
+          </div>
+        </section>
+
+        <section class="detail-section detail-section--full">
+          <h4>Notes</h4>
+          <form class="field" data-note-form>
+            <textarea name="text" rows="3" placeholder="Add a note, approval, or blocker." required></textarea>
+            <button class="button button--solid" type="submit">Save Note</button>
+          </form>
+          <div class="note-list">
+            ${
+              campaign.notes.length
+                ? campaign.notes
+                    .slice()
+                    .sort((left, right) => right.stamp.localeCompare(left.stamp))
+                    .map(
+                      (note) => `
+                        <article class="note-card">
+                          <p class="note-card__time">${escapeHtml(formatDateTime(note.stamp))}</p>
+                          <p>${escapeHtml(note.text)}</p>
+                        </article>
+                      `
+                    )
+                    .join("")
+                : emptyState("No notes saved for this campaign.")
+            }
+          </div>
+        </section>
+      </div>
+    </div>
+  `;
+}
+
+function renderPlatformCard(platform) {
+  return `
+    <article class="platform-card">
+      <div class="platform-card__grid">
+        <div class="platform-card__row">
+          <input data-platform-id="${platform.id}" data-platform-field="name" value="${escapeAttr(platform.name)}">
+          <input data-platform-id="${platform.id}" data-platform-field="owner" value="${escapeAttr(platform.owner || "")}" placeholder="Owner">
         </div>
-      </section>
-    `;
-  }).join("");
+        <textarea rows="2" data-platform-id="${platform.id}" data-platform-field="focus">${escapeHtml(platform.focus || "")}</textarea>
+        <button class="button button--ghost button--danger" type="button" data-delete-platform="${platform.id}">Remove Platform</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderTaskColumn(campaign, status) {
+  const tasks = campaign.tasks.filter((task) => task.status === status.key);
+  return `
+    <section class="task-column">
+      <div class="task-column__head">
+        <h4>${escapeHtml(status.label)}</h4>
+        <span class="count">${tasks.length}</span>
+      </div>
+      <div class="task-stack">
+        ${
+          tasks.length
+            ? tasks.map((task) => renderTaskCard(task)).join("")
+            : emptyState("No tasks here.")
+        }
+      </div>
+    </section>
+  `;
 }
 
 function renderTaskCard(task) {
@@ -533,116 +480,467 @@ function renderTaskCard(task) {
       <div class="task-card__grid">
         <div class="task-card__row">
           <select data-task-id="${task.id}" data-task-field="status">
-            ${renderOptions(STATUSES.map((status) => status.key), task.status, getStatusLabels())}
+            ${renderOptions(TASK_STATUSES.map((item) => item.key), task.status, getTaskStatusLabels())}
           </select>
           <select data-task-id="${task.id}" data-task-field="channel">
-            ${renderOptions(CHANNELS.map((channel) => channel.key), task.channel, getChannelLabels())}
+            ${renderOptions(CHANNELS.map((item) => item.key), task.channel, getChannelLabels())}
           </select>
         </div>
         <div class="task-card__row">
-          <input type="date" data-task-id="${task.id}" data-task-field="due" value="${escapeAttr(task.due)}">
           <input data-task-id="${task.id}" data-task-field="owner" value="${escapeAttr(task.owner)}">
+          <input data-task-id="${task.id}" data-task-field="platformName" value="${escapeAttr(task.platformName || "")}" placeholder="Platform link">
         </div>
-        <button class="button button--ghost task-card__remove" type="button" data-delete-task="${task.id}">Remove</button>
+        <button class="button button--ghost button--danger" type="button" data-delete-task="${task.id}">Remove Task</button>
       </div>
     </article>
   `;
 }
 
-function renderNotes(campaign) {
-  if (!campaign) {
-    els.noteList.innerHTML = emptyState("No campaign selected.");
+function renderCampaignField(label, path, value) {
+  return `
+    <div class="field">
+      <label>${escapeHtml(label)}</label>
+      <input data-path="${escapeAttr(path)}" value="${escapeAttr(value)}">
+    </div>
+  `;
+}
+
+function renderCampaignArea(label, path, value) {
+  return `
+    <div class="field">
+      <label>${escapeHtml(label)}</label>
+      <textarea rows="3" data-path="${escapeAttr(path)}">${escapeHtml(value)}</textarea>
+    </div>
+  `;
+}
+
+async function handleStrategySubmit(event) {
+  event.preventDefault();
+
+  const formData = new FormData(event.currentTarget);
+  const payload = {
+    brandId: String(formData.get("brandId") || "").trim(),
+    campaignName: String(formData.get("campaignName") || "").trim(),
+    owner: String(formData.get("owner") || "").trim(),
+    audienceLabel: String(formData.get("audienceLabel") || "").trim(),
+    objective: String(formData.get("objective") || "").trim(),
+    audience: String(formData.get("audience") || "").trim(),
+    need: String(formData.get("need") || "").trim(),
+    desire: String(formData.get("desire") || "").trim(),
+    value: String(formData.get("value") || "").trim(),
+    tone: String(formData.get("tone") || "").trim(),
+    constraints: String(formData.get("constraints") || "").trim(),
+    platforms: strategyPlatforms.slice()
+  };
+
+  if (!payload.brandId || !payload.campaignName || !payload.owner) return;
+
+  const campaign = createOrUpdateCampaignFromIntake(payload);
+  state.activeCampaignId = campaign.id;
+  persistState();
+
+  if (!aiSettings.apiKey) {
+    els.strategyStatusText.textContent = "Campaign saved. Add an OpenAI API key above to generate the AI strategy.";
+    render();
     return;
   }
 
-  els.noteList.innerHTML = campaign.notes.length
-    ? campaign.notes
-        .slice()
-        .sort((left, right) => right.stamp.localeCompare(left.stamp))
-        .map(
-          (note) => `
-            <article class="note-card">
-              <p class="note-card__time">${escapeHtml(formatDateTime(note.stamp))}</p>
-              <p>${escapeHtml(note.text)}</p>
-            </article>
-          `
-        )
-        .join("")
-    : emptyState("No notes yet. Use this area for approvals, blockers, and updates.");
+  els.strategyStatusText.textContent = "Generating strategy...";
+
+  try {
+    const strategy = await generateStrategyWithAi(payload);
+    applyStrategyToCampaign(campaign, payload, strategy);
+    state.activeCampaignId = campaign.id;
+    persistState();
+    els.strategyStatusText.textContent = "Strategy generated and saved to the active campaign.";
+    render();
+  } catch (error) {
+    els.strategyStatusText.textContent = error instanceof Error ? error.message : "Strategy generation failed.";
+    render();
+  }
 }
 
-function createCampaign({ brandId, product, owner, launchDate }) {
-  return {
+function handleFieldChange(event) {
+  const campaign = getActiveCampaign();
+  if (!campaign) return;
+
+  const path = event.target.dataset.path;
+  if (path) {
+    setByPath(campaign, path, event.target.value);
+    persistState();
+    render();
+    return;
+  }
+
+  const platformId = event.target.dataset.platformId;
+  const platformField = event.target.dataset.platformField;
+  if (platformId && platformField) {
+    const platform = campaign.platforms.find((item) => item.id === platformId);
+    if (!platform) return;
+    platform[platformField] = event.target.value;
+    persistState();
+    render();
+    return;
+  }
+
+  const taskId = event.target.dataset.taskId;
+  const taskField = event.target.dataset.taskField;
+  if (taskId && taskField) {
+    const task = campaign.tasks.find((item) => item.id === taskId);
+    if (!task) return;
+    task[taskField] = event.target.value;
+    persistState();
+    render();
+  }
+}
+
+function handleClickActions(event) {
+  const removeStrategyPlatform = event.target.closest("[data-remove-strategy-platform]");
+  if (removeStrategyPlatform) {
+    strategyPlatforms.splice(Number(removeStrategyPlatform.dataset.removeStrategyPlatform), 1);
+    renderStrategyPlatformTags();
+    return;
+  }
+
+  const selectCampaign = event.target.closest("[data-select-campaign]");
+  if (selectCampaign) {
+    state.activeCampaignId = selectCampaign.dataset.selectCampaign;
+    currentPage = "campaigns";
+    location.hash = "campaigns";
+    persistState();
+    render();
+    return;
+  }
+
+  const deletePlatform = event.target.closest("[data-delete-platform]");
+  if (deletePlatform) {
+    const campaign = getActiveCampaign();
+    if (!campaign) return;
+    campaign.platforms = campaign.platforms.filter((item) => item.id !== deletePlatform.dataset.deletePlatform);
+    persistState();
+    render();
+    return;
+  }
+
+  const deleteTask = event.target.closest("[data-delete-task]");
+  if (deleteTask) {
+    const campaign = getActiveCampaign();
+    if (!campaign) return;
+    campaign.tasks = campaign.tasks.filter((item) => item.id !== deleteTask.dataset.deleteTask);
+    persistState();
+    render();
+    return;
+  }
+
+  const openActiveCampaign = event.target.closest("[data-open-active-campaign]");
+  if (openActiveCampaign) {
+    currentPage = "campaigns";
+    location.hash = "campaigns";
+    render();
+  }
+}
+
+function handleEmbeddedForms(event) {
+  const campaign = getActiveCampaign();
+  if (!campaign) return;
+
+  const platformForm = event.target.closest("[data-platform-form]");
+  if (platformForm) {
+    event.preventDefault();
+    const formData = new FormData(platformForm);
+    const name = String(formData.get("name") || "").trim();
+    if (!name) return;
+    campaign.platforms.push({
+      id: uid("platform"),
+      name,
+      focus: String(formData.get("focus") || "").trim(),
+      owner: String(formData.get("owner") || "").trim()
+    });
+    persistState();
+    render();
+    return;
+  }
+
+  const taskForm = event.target.closest("[data-task-form]");
+  if (taskForm) {
+    event.preventDefault();
+    const formData = new FormData(taskForm);
+    const title = String(formData.get("title") || "").trim();
+    const channel = String(formData.get("channel") || "").trim();
+    const owner = String(formData.get("owner") || "").trim();
+    if (!title || !channel || !owner) return;
+    campaign.tasks.unshift({
+      id: uid("task"),
+      title,
+      channel,
+      owner,
+      platformName: "",
+      status: "planned"
+    });
+    persistState();
+    render();
+    return;
+  }
+
+  const noteForm = event.target.closest("[data-note-form]");
+  if (noteForm) {
+    event.preventDefault();
+    const formData = new FormData(noteForm);
+    const text = String(formData.get("text") || "").trim();
+    if (!text) return;
+    campaign.notes.unshift({
+      id: uid("note"),
+      text,
+      stamp: new Date().toISOString()
+    });
+    persistState();
+    render();
+  }
+}
+
+function addStrategyPlatformFromInput() {
+  const value = els.strategyPlatformInput.value.trim();
+  if (!value) return;
+  strategyPlatforms.push(value);
+  els.strategyPlatformInput.value = "";
+  renderStrategyPlatformTags();
+}
+
+function createOrUpdateCampaignFromIntake(payload) {
+  const existing = state.campaigns.find(
+    (campaign) => campaign.name.toLowerCase() === payload.campaignName.toLowerCase() && campaign.brandId === payload.brandId
+  );
+
+  if (existing) {
+    existing.owner = payload.owner;
+    existing.audienceLabel = payload.audienceLabel;
+    existing.objective = payload.objective;
+    existing.audience = payload.audience;
+    existing.need = payload.need;
+    existing.desire = payload.desire;
+    existing.value = payload.value;
+    existing.tone = payload.tone;
+    existing.constraints = payload.constraints;
+    mergePlatforms(existing, payload.platforms.map((name) => ({ name, focus: "", owner: "" })));
+    return existing;
+  }
+
+  const campaign = {
     id: uid("campaign"),
-    brandId,
-    product,
-    owner,
-    launchDate,
-    stage: "planning",
-    audienceLabel: "",
-    objective: "",
-    audience: "",
-    need: "",
-    desire: "",
-    value: "",
+    brandId: payload.brandId,
+    name: payload.campaignName,
+    owner: payload.owner,
+    status: "active",
+    audienceLabel: payload.audienceLabel,
+    objective: payload.objective,
+    audience: payload.audience,
+    need: payload.need,
+    desire: payload.desire,
+    value: payload.value,
+    tone: payload.tone,
+    constraints: payload.constraints,
     messaging: {
       core: "",
       support: "",
       cta: "",
-      proof: "",
-      notes: ""
+      proof: ""
     },
-    channels: Object.fromEntries(
-      CHANNELS.map((channel) => [
-        channel.key,
-        {
-          owner: "",
-          focus: ""
-        }
-      ])
-    ),
-    metrics: {
-      visibility: { target: 0, actual: 0 },
-      engagement: { target: 0, actual: 0 },
-      conversion: { target: 0, actual: 0 }
-    },
+    workstreams: Object.fromEntries(CHANNELS.map((channel) => [channel.key, ""])),
+    platforms: payload.platforms.map((name) => ({
+      id: uid("platform"),
+      name,
+      focus: "",
+      owner: ""
+    })),
     tasks: [],
-    notes: []
+    notes: [],
+    aiStrategy: null
   };
+
+  state.campaigns.unshift(campaign);
+  return campaign;
 }
 
-function createInitialState() {
-  return {
-    campaigns: [],
-    activeCampaignId: null,
-    lastSaved: new Date().toISOString()
-  };
-}
+function applyStrategyToCampaign(campaign, payload, strategy) {
+  campaign.status = "active";
+  campaign.owner = payload.owner;
+  campaign.audienceLabel = payload.audienceLabel;
+  campaign.objective = strategy.objective || payload.objective;
+  campaign.audience = strategy.audience || payload.audience;
+  campaign.need = strategy.need || payload.need;
+  campaign.desire = strategy.desire || payload.desire;
+  campaign.value = strategy.value || payload.value;
+  campaign.tone = payload.tone;
+  campaign.constraints = payload.constraints;
+  campaign.messaging.core = strategy.messaging?.core || "";
+  campaign.messaging.support = strategy.messaging?.support || "";
+  campaign.messaging.cta = strategy.messaging?.cta || "";
+  campaign.messaging.proof = strategy.messaging?.proof || "";
 
-function loadState() {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return createInitialState();
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed.campaigns)) return createInitialState();
-    return {
-      campaigns: parsed.campaigns,
-      activeCampaignId: parsed.activeCampaignId || null,
-      lastSaved: parsed.lastSaved || new Date().toISOString()
-    };
-  } catch {
-    return createInitialState();
+  CHANNELS.forEach((channel) => {
+    campaign.workstreams[channel.key] = strategy.workstreams?.[channel.key] || campaign.workstreams[channel.key] || "";
+  });
+
+  mergePlatforms(campaign, strategy.platforms || payload.platforms.map((name) => ({ name, focus: "", owner: "" })));
+
+  campaign.aiStrategy = {
+    summary: strategy.summary || "",
+    creativeDirection: strategy.creativeDirection || "",
+    contentAngles: Array.isArray(strategy.contentAngles) ? strategy.contentAngles : [],
+    successSignals: Array.isArray(strategy.successSignals) ? strategy.successSignals : [],
+    generatedAt: new Date().toISOString()
+  };
+
+  const suggestedTasks = Array.isArray(strategy.taskSuggestions) ? strategy.taskSuggestions : [];
+  if (!campaign.tasks.length && suggestedTasks.length) {
+    campaign.tasks = suggestedTasks.map((task) => ({
+      id: uid("task"),
+      title: task.title || "New task",
+      channel: CHANNELS.some((channel) => channel.key === task.channel) ? task.channel : "content",
+      owner: task.owner || campaign.owner,
+      platformName: task.platform || "",
+      status: "planned"
+    }));
   }
 }
 
-function persist() {
-  state.lastSaved = new Date().toISOString();
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function mergePlatforms(campaign, platformItems) {
+  const existingByName = new Map(campaign.platforms.map((platform) => [platform.name.toLowerCase(), platform]));
+  platformItems.forEach((item) => {
+    const name = typeof item === "string" ? item : item.name;
+    if (!name) return;
+    const key = name.toLowerCase();
+    const existing = existingByName.get(key);
+    if (existing) {
+      if (typeof item !== "string") {
+        existing.focus = item.focus || existing.focus;
+        existing.owner = item.owner || existing.owner;
+      }
+      return;
+    }
+    campaign.platforms.push({
+      id: uid("platform"),
+      name,
+      focus: typeof item === "string" ? "" : item.focus || "",
+      owner: typeof item === "string" ? "" : item.owner || ""
+    });
+  });
+}
+
+async function generateStrategyWithAi(payload) {
+  const prompt = buildStrategyPrompt(payload);
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${aiSettings.apiKey}`
+    },
+    body: JSON.stringify({
+      model: aiSettings.model || "gpt-5-mini",
+      input: prompt,
+      temperature: 0.6,
+      max_output_tokens: 2200
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI request failed: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  const text = extractResponseText(data);
+  const parsed = parseJsonBlock(text);
+  if (!parsed) {
+    throw new Error("AI response did not return valid JSON.");
+  }
+  return parsed;
+}
+
+function buildStrategyPrompt(payload) {
+  return [
+    "You are building a marketing strategy for a campaign planning dashboard.",
+    "Return valid JSON only. No markdown fences. No explanation outside the JSON.",
+    "Use this exact schema:",
+    JSON.stringify({
+      summary: "string",
+      objective: "string",
+      audience: "string",
+      need: "string",
+      desire: "string",
+      value: "string",
+      messaging: {
+        core: "string",
+        support: "string",
+        cta: "string",
+        proof: "string"
+      },
+      creativeDirection: "string",
+      platforms: [{ name: "string", focus: "string", owner: "string" }],
+      workstreams: {
+        design: "string",
+        social: "string",
+        content: "string",
+        visuals: "string",
+        messaging: "string"
+      },
+      contentAngles: ["string", "string", "string"],
+      successSignals: ["string", "string", "string"],
+      taskSuggestions: [{ title: "string", channel: "design|social|content|visuals|messaging", owner: "string", platform: "string" }]
+    }),
+    "Campaign input:",
+    JSON.stringify({
+      brand: getBrand(payload.brandId)?.name || "",
+      campaignName: payload.campaignName,
+      owner: payload.owner,
+      audienceLabel: payload.audienceLabel,
+      objective: payload.objective,
+      audience: payload.audience,
+      need: payload.need,
+      desire: payload.desire,
+      value: payload.value,
+      tone: payload.tone,
+      constraints: payload.constraints,
+      platforms: payload.platforms
+    })
+  ].join("\n");
+}
+
+function extractResponseText(data) {
+  if (typeof data.output_text === "string" && data.output_text.trim()) {
+    return data.output_text;
+  }
+
+  const contentParts = [];
+  (data.output || []).forEach((item) => {
+    if (item.type !== "message") return;
+    (item.content || []).forEach((content) => {
+      if (content.type === "output_text" && content.text) {
+        contentParts.push(content.text);
+      }
+    });
+  });
+  return contentParts.join("\n").trim();
+}
+
+function parseJsonBlock(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start === -1 || end === -1 || end <= start) return null;
+    try {
+      return JSON.parse(text.slice(start, end + 1));
+    } catch {
+      return null;
+    }
+  }
 }
 
 function exportState() {
   const payload = {
-    brands: BRANDS,
     campaigns: state.campaigns,
     activeCampaignId: state.activeCampaignId,
     lastSaved: state.lastSaved
@@ -661,16 +959,14 @@ async function importState(event) {
   if (!file) return;
   try {
     const text = await file.text();
-    const imported = JSON.parse(text);
-    if (!Array.isArray(imported.campaigns)) {
-      throw new Error("Invalid VMarket file.");
-    }
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed.campaigns)) throw new Error("Invalid VMarket export.");
     state = {
-      campaigns: imported.campaigns,
-      activeCampaignId: imported.activeCampaignId || imported.campaigns[0]?.id || null,
-      lastSaved: imported.lastSaved || new Date().toISOString()
+      campaigns: parsed.campaigns,
+      activeCampaignId: parsed.activeCampaignId || parsed.campaigns[0]?.id || null,
+      lastSaved: parsed.lastSaved || new Date().toISOString()
     };
-    persist();
+    persistState();
     render();
   } catch (error) {
     window.alert(error instanceof Error ? error.message : "Import failed.");
@@ -679,16 +975,51 @@ async function importState(event) {
   }
 }
 
-function hydrateBrandSeedSelect() {
-  els.brandSeedSelect.innerHTML = BRANDS.map(
-    (brand) => `<option value="${brand.id}">${escapeHtml(brand.name)}</option>`
-  ).join("");
+function loadState() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return createInitialState();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.campaigns)) return createInitialState();
+    return {
+      campaigns: parsed.campaigns,
+      activeCampaignId: parsed.activeCampaignId || null,
+      lastSaved: parsed.lastSaved || new Date().toISOString()
+    };
+  } catch {
+    return createInitialState();
+  }
 }
 
-function hydrateTaskChannels() {
-  els.taskForm.querySelector('select[name="channel"]').innerHTML = CHANNELS.map(
-    (channel) => `<option value="${channel.key}">${escapeHtml(channel.label)}</option>`
-  ).join("");
+function loadAiSettings() {
+  try {
+    const raw = window.localStorage.getItem(AI_SETTINGS_KEY);
+    if (!raw) return { apiKey: "", model: "gpt-5-mini" };
+    const parsed = JSON.parse(raw);
+    return {
+      apiKey: parsed.apiKey || "",
+      model: parsed.model || "gpt-5-mini"
+    };
+  } catch {
+    return { apiKey: "", model: "gpt-5-mini" };
+  }
+}
+
+function persistState() {
+  state.lastSaved = new Date().toISOString();
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function persistAiSettings() {
+  window.localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(aiSettings));
+}
+
+function createInitialState() {
+  return {
+    campaigns: [],
+    activeCampaignId: null,
+    lastSaved: new Date().toISOString()
+  };
 }
 
 function getActiveCampaign() {
@@ -702,35 +1033,24 @@ function getBrand(brandId) {
 
 function getCampaignProgress(campaign) {
   if (!campaign.tasks.length) return 0;
-  const total = campaign.tasks.reduce((sum, task) => sum + getStatusWeight(task.status), 0);
+  const total = campaign.tasks.reduce((sum, task) => sum + getTaskWeight(task.status), 0);
   return (total / campaign.tasks.length) * 100;
 }
 
-function getChannelProgress(tasks) {
-  if (!tasks.length) return 0;
-  const total = tasks.reduce((sum, task) => sum + getStatusWeight(task.status), 0);
-  return (total / tasks.length) * 100;
+function getTaskWeight(key) {
+  return TASK_STATUSES.find((status) => status.key === key)?.weight || 0;
 }
 
-function getMetricProgress(metric) {
-  if (!metric.target) return 0;
-  return (metric.actual / metric.target) * 100;
+function getCampaignStatusLabel(key) {
+  return CAMPAIGN_STATUSES.find((status) => status.key === key)?.label || key;
 }
 
-function getDaysUntil(dateValue) {
-  if (!dateValue) return 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const date = new Date(`${dateValue}T00:00:00`);
-  return Math.round((date.getTime() - today.getTime()) / 86400000);
+function getCampaignStatusLabels() {
+  return Object.fromEntries(CAMPAIGN_STATUSES.map((status) => [status.key, status.label]));
 }
 
-function getStatusWeight(key) {
-  return STATUSES.find((status) => status.key === key)?.weight || 0;
-}
-
-function getStatusLabels() {
-  return Object.fromEntries(STATUSES.map((status) => [status.key, status.label]));
+function getTaskStatusLabels() {
+  return Object.fromEntries(TASK_STATUSES.map((status) => [status.key, status.label]));
 }
 
 function getChannelLabels() {
@@ -755,20 +1075,6 @@ function setByPath(target, path, value) {
     cursor = cursor[part];
   }
   cursor[parts[0]] = value;
-}
-
-function castValue(value, type) {
-  if (type === "number") return Number(value || 0);
-  return value;
-}
-
-function formatDate(value) {
-  if (!value) return "No date set";
-  return new Intl.DateTimeFormat("en", {
-    day: "numeric",
-    month: "short",
-    year: "numeric"
-  }).format(new Date(`${value}T00:00:00`));
 }
 
 function formatDateTime(value) {

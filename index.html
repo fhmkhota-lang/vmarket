@@ -6,7 +6,7 @@
   <title>VMarket</title>
   <meta
     name="description"
-    content="VMarket is a static campaign planning dashboard for IOL, Title Sites, and Conde Naste."
+    content="VMarket is a static AI-assisted campaign planner for IOL, Title Sites, and Conde Naste."
   >
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -16,15 +16,15 @@
       <div class="brand">
         <div class="brand__mark">VM</div>
         <div>
-          <p class="eyebrow">Marketing Planner</p>
+          <p class="eyebrow">Campaign Strategy Workspace</p>
           <h1>VMarket</h1>
         </div>
       </div>
 
-      <div class="topbar__context">
-        <p class="eyebrow">Active Campaign</p>
-        <p class="context-label" id="currentContextLabel">No campaign selected</p>
-      </div>
+      <nav class="tabs" aria-label="Primary">
+        <button class="tab is-active" type="button" data-page-trigger="strategy">AI Strategy Builder</button>
+        <button class="tab" type="button" data-page-trigger="campaigns">Active Campaigns</button>
+      </nav>
 
       <div class="topbar__actions">
         <button class="button button--ghost" id="exportBtn" type="button">Export</button>
@@ -37,115 +37,143 @@
     <main class="page">
       <section class="hero panel">
         <div>
-          <p class="eyebrow eyebrow--soft">One place to plan the full campaign</p>
-          <h2>Build the brief, define the message, assign the work, and track campaign progress.</h2>
+          <p class="eyebrow eyebrow--soft">Plan smarter, not heavier</p>
+          <h2>Use AI to build a campaign strategy, then move through every active campaign in one place.</h2>
           <p class="hero__text">
-            VMarket is a static GitHub Pages-ready dashboard for IOL, Title Sites, and Conde Naste.
-            It starts empty and stores your campaign plans locally in the browser.
+            VMarket now focuses on strategy generation, campaign planning, platform mapping, and execution tasks.
+            Launch and live tracking have been removed to keep the workspace cleaner and more useful.
           </p>
         </div>
         <div class="hero__stats" id="heroStats"></div>
       </section>
 
-      <section class="workspace panel">
-        <div class="workspace__left">
-          <label for="campaignSelect">Campaign workspace</label>
-          <select id="campaignSelect"></select>
-        </div>
+      <section class="page-panel is-active" id="page-strategy" data-page="strategy">
+        <div class="page-grid">
+          <article class="panel panel--settings">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">AI Setup</p>
+                <h3>Browser-based OpenAI access</h3>
+              </div>
+            </div>
 
-        <form class="campaign-form" id="campaignForm">
-          <select name="brandId" id="brandSeedSelect" required></select>
-          <input name="productName" type="text" placeholder="Campaign or product name" required>
-          <input name="owner" type="text" placeholder="Campaign owner" required>
-          <input name="launchDate" type="date" required>
-          <button class="button button--solid" type="submit">Create Campaign</button>
-        </form>
+            <form class="form-grid" id="aiSettingsForm">
+              <div class="field field--full">
+                <label for="apiKeyInput">OpenAI API key</label>
+                <input id="apiKeyInput" type="password" placeholder="sk-..." autocomplete="off">
+                <p class="helper">Stored only in this browser. GitHub Pages cannot securely hide server-side secrets.</p>
+              </div>
+              <div class="field">
+                <label for="modelSelect">Model</label>
+                <select id="modelSelect">
+                  <option value="gpt-5-mini">gpt-5-mini</option>
+                  <option value="gpt-5">gpt-5</option>
+                </select>
+              </div>
+              <div class="field field--actions">
+                <button class="button button--solid" type="submit">Save AI Settings</button>
+              </div>
+            </form>
+          </article>
+
+          <article class="panel panel--builder">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Strategy Intake</p>
+                <h3>Answer a few questions and generate the plan</h3>
+              </div>
+            </div>
+
+            <form class="form-grid" id="strategyForm">
+              <div class="field">
+                <label for="strategyBrand">Brand</label>
+                <select id="strategyBrand" name="brandId" required></select>
+              </div>
+              <div class="field">
+                <label for="strategyName">Campaign / product</label>
+                <input id="strategyName" name="campaignName" type="text" required>
+              </div>
+              <div class="field">
+                <label for="strategyOwner">Owner</label>
+                <input id="strategyOwner" name="owner" type="text" required>
+              </div>
+              <div class="field">
+                <label for="strategyAudienceLabel">Audience label</label>
+                <input id="strategyAudienceLabel" name="audienceLabel" type="text" placeholder="Example: Young professionals">
+              </div>
+              <div class="field field--full">
+                <label for="strategyObjective">What is the business objective?</label>
+                <textarea id="strategyObjective" name="objective" rows="3" required></textarea>
+              </div>
+              <div class="field field--full">
+                <label for="strategyAudience">Who is the campaign for?</label>
+                <textarea id="strategyAudience" name="audience" rows="3" required></textarea>
+              </div>
+              <div class="field field--full">
+                <label for="strategyNeed">What need or problem does the product solve?</label>
+                <textarea id="strategyNeed" name="need" rows="3" required></textarea>
+              </div>
+              <div class="field field--full">
+                <label for="strategyDesire">What desire or emotional payoff should the campaign tap into?</label>
+                <textarea id="strategyDesire" name="desire" rows="3" required></textarea>
+              </div>
+              <div class="field field--full">
+                <label for="strategyValue">What is the clearest value proposition?</label>
+                <textarea id="strategyValue" name="value" rows="3" required></textarea>
+              </div>
+              <div class="field field--full">
+                <label for="strategyTone">What tone should the campaign use?</label>
+                <textarea id="strategyTone" name="tone" rows="2" placeholder="Example: confident, premium, useful"></textarea>
+              </div>
+              <div class="field field--full">
+                <label for="strategyConstraints">Any constraints, mandates, or must-include context?</label>
+                <textarea id="strategyConstraints" name="constraints" rows="3"></textarea>
+              </div>
+              <div class="field field--full">
+                <label>Platforms</label>
+                <div class="tag-editor">
+                  <div class="tag-list" id="strategyPlatformTags"></div>
+                  <div class="tag-entry">
+                    <input id="strategyPlatformInput" type="text" placeholder="Add a platform, channel, or placement">
+                    <button class="button button--ghost" type="button" id="addStrategyPlatformBtn">Add Platform</button>
+                  </div>
+                </div>
+              </div>
+              <div class="field field--full field--actions">
+                <button class="button button--solid" type="submit" id="generateStrategyBtn">Generate Strategy</button>
+                <p class="helper" id="strategyStatusText">No strategy generated yet.</p>
+              </div>
+            </form>
+          </article>
+
+          <article class="panel panel--strategy-output">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Generated Strategy</p>
+                <h3>AI output and structured campaign plan</h3>
+              </div>
+            </div>
+            <div id="strategyOutput"></div>
+          </article>
+        </div>
       </section>
 
-      <section class="brands panel">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Brands</p>
-            <h3>Current planning scope</h3>
-          </div>
+      <section class="page-panel" id="page-campaigns" data-page="campaigns">
+        <div class="campaigns-layout">
+          <aside class="panel panel--campaign-list">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Active Campaigns</p>
+                <h3>Browse current work</h3>
+              </div>
+            </div>
+            <div id="campaignList"></div>
+          </aside>
+
+          <section class="panel panel--campaign-detail">
+            <div id="campaignDetail"></div>
+          </section>
         </div>
-        <div class="brand-grid" id="portfolioGrid"></div>
-      </section>
-
-      <section class="dashboard">
-        <article class="panel panel--brief">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Campaign Brief</p>
-              <h3>Objective, audience, need, desire, value</h3>
-            </div>
-          </div>
-          <form class="form-grid" id="briefForm"></form>
-        </article>
-
-        <article class="panel panel--message">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Messaging</p>
-              <h3>Core message, support line, CTA</h3>
-            </div>
-          </div>
-          <form class="form-grid" id="messageForm"></form>
-        </article>
-
-        <article class="panel panel--channels">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Workstreams</p>
-              <h3>Design, social, content, visuals, messaging</h3>
-            </div>
-          </div>
-          <div class="channel-list" id="channelGrid"></div>
-        </article>
-
-        <article class="panel panel--status">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Status</p>
-              <h3>Launch and live tracking</h3>
-            </div>
-          </div>
-          <div id="statusPanel"></div>
-          <form class="metric-list" id="metricForm"></form>
-        </article>
-
-        <article class="panel panel--tasks">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Task Board</p>
-              <h3>Real-time campaign execution</h3>
-            </div>
-          </div>
-
-          <form class="task-form" id="taskForm">
-            <input name="title" type="text" placeholder="Task title" required>
-            <select name="channel" required></select>
-            <input name="owner" type="text" placeholder="Owner" required>
-            <input name="due" type="date" required>
-            <button class="button button--solid" type="submit">Add Task</button>
-          </form>
-
-          <div class="task-board" id="taskBoard"></div>
-        </article>
-
-        <article class="panel panel--notes">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Notes</p>
-              <h3>Approvals, blockers, updates</h3>
-            </div>
-          </div>
-          <form class="note-form" id="noteForm">
-            <textarea name="noteText" rows="3" placeholder="Add a campaign note or live update." required></textarea>
-            <button class="button button--solid" type="submit">Save Note</button>
-          </form>
-          <div class="note-list" id="noteList"></div>
-        </article>
       </section>
     </main>
   </div>
