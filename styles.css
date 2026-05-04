@@ -132,6 +132,10 @@ button {
 .button {
   padding: 0.78rem 1rem;
   font-weight: 700;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .button--solid {
@@ -322,6 +326,17 @@ textarea {
   color: var(--muted);
   font-size: 0.84rem;
   line-height: 1.45;
+}
+
+.stack {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
 }
 
 .tag-editor {

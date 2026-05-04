@@ -1,5 +1,6 @@
-const STORAGE_KEY = "vmarket-state-v3";
-const AI_SETTINGS_KEY = "vmarket-ai-settings-v1";
+const STORAGE_KEY = "vmarket-state-v4";
+const AI_SETTINGS_KEY = "vmarket-claude-settings-v1";
+const ANTHROPIC_VERSION = "2023-06-01";
 
 const BRANDS = [
   {
@@ -98,8 +99,8 @@ function bindEvents() {
     aiSettings.model = els.modelSelect.value;
     persistAiSettings();
     els.strategyStatusText.textContent = aiSettings.apiKey
-      ? "AI settings saved in this browser."
-      : "AI key cleared. You can still plan campaigns manually.";
+      ? "Claude settings saved in this browser."
+      : "Claude key cleared. You can still save campaign intake manually.";
   });
 
   els.addStrategyPlatformBtn.addEventListener("click", addStrategyPlatformFromInput);
@@ -116,7 +117,7 @@ function bindEvents() {
   els.importInput.addEventListener("change", importState);
 
   els.resetBtn.addEventListener("click", () => {
-    if (!window.confirm("Clear all campaigns and AI-generated strategy data?")) return;
+    if (!window.confirm("Clear all campaigns and Claude-generated strategy data?")) return;
     state = createInitialState();
     strategyPlatforms = [];
     persistState();
@@ -160,7 +161,7 @@ function hydrateBrandOptions() {
 
 function hydrateAiSettings() {
   els.apiKeyInput.value = aiSettings.apiKey || "";
-  els.modelSelect.value = aiSettings.model || "gpt-5-mini";
+  els.modelSelect.value = aiSettings.model || "claude-sonnet-4-20250514";
 }
 
 function renderHero() {
@@ -219,14 +220,14 @@ function renderStrategyPlatformTags() {
           `
         )
         .join("")
-    : `<div class="empty-state">Add one or more platforms for the AI strategy to plan against.</div>`;
+    : `<div class="empty-state">Add one or more platforms for Claude to plan against.</div>`;
 }
 
 function renderStrategyOutput() {
   const campaign = getActiveCampaign();
   if (!campaign?.aiStrategy) {
     els.strategyOutput.innerHTML = emptyState(
-      "Generated strategy will appear here after you answer the intake questions."
+      "Claude strategy output will appear here after you submit the intake."
     );
     return;
   }
@@ -379,7 +380,7 @@ function renderCampaignDetail() {
         </section>
 
         <section class="detail-section detail-section--full">
-          <h4>AI Strategy</h4>
+          <h4>Claude Strategy</h4>
           ${
             strategy
               ? `
@@ -389,7 +390,7 @@ function renderCampaignDetail() {
                   ${(strategy.contentAngles || []).map((item) => `<span class="pill">${escapeHtml(item)}</span>`).join("")}
                 </div>
               `
-              : emptyState("No AI strategy attached to this campaign yet.")
+              : emptyState("No Claude strategy attached to this campaign yet.")
           }
         </section>
 
@@ -540,22 +541,22 @@ async function handleStrategySubmit(event) {
   persistState();
 
   if (!aiSettings.apiKey) {
-    els.strategyStatusText.textContent = "Campaign saved. Add an OpenAI API key above to generate the AI strategy.";
+    els.strategyStatusText.textContent = "Campaign saved. Add your Claude API key above to generate strategy output.";
     render();
     return;
   }
 
-  els.strategyStatusText.textContent = "Generating strategy...";
+  els.strategyStatusText.textContent = "Generating strategy with Claude...";
 
   try {
-    const strategy = await generateStrategyWithAi(payload);
+    const strategy = await generateStrategyWithClaude(payload);
     applyStrategyToCampaign(campaign, payload, strategy);
     state.activeCampaignId = campaign.id;
     persistState();
-    els.strategyStatusText.textContent = "Strategy generated and saved to the active campaign.";
+    els.strategyStatusText.textContent = "Claude strategy generated and saved.";
     render();
   } catch (error) {
-    els.strategyStatusText.textContent = error instanceof Error ? error.message : "Strategy generation failed.";
+    els.strategyStatusText.textContent = error instanceof Error ? error.message : "Claude strategy generation failed.";
     render();
   }
 }
@@ -827,32 +828,37 @@ function mergePlatforms(campaign, platformItems) {
   });
 }
 
-async function generateStrategyWithAi(payload) {
+async function generateStrategyWithClaude(payload) {
   const prompt = buildStrategyPrompt(payload);
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${aiSettings.apiKey}`
+      "content-type": "application/json",
+      "x-api-key": aiSettings.apiKey,
+      "anthropic-version": ANTHROPIC_VERSION
     },
     body: JSON.stringify({
-      model: aiSettings.model || "gpt-5-mini",
-      input: prompt,
-      temperature: 0.6,
-      max_output_tokens: 2200
+      model: aiSettings.model || "claude-sonnet-4-20250514",
+      max_tokens: 2200,
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
     })
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`OpenAI request failed: ${response.status} ${errorText}`);
+    throw new Error(`Claude request failed: ${response.status} ${errorText}`);
   }
 
   const data = await response.json();
-  const text = extractResponseText(data);
+  const text = extractClaudeText(data);
   const parsed = parseJsonBlock(text);
   if (!parsed) {
-    throw new Error("AI response did not return valid JSON.");
+    throw new Error("Claude response did not return valid JSON.");
   }
   return parsed;
 }
@@ -906,21 +912,12 @@ function buildStrategyPrompt(payload) {
   ].join("\n");
 }
 
-function extractResponseText(data) {
-  if (typeof data.output_text === "string" && data.output_text.trim()) {
-    return data.output_text;
-  }
-
-  const contentParts = [];
-  (data.output || []).forEach((item) => {
-    if (item.type !== "message") return;
-    (item.content || []).forEach((content) => {
-      if (content.type === "output_text" && content.text) {
-        contentParts.push(content.text);
-      }
-    });
-  });
-  return contentParts.join("\n").trim();
+function extractClaudeText(data) {
+  return (data.content || [])
+    .filter((item) => item.type === "text" && item.text)
+    .map((item) => item.text)
+    .join("\n")
+    .trim();
 }
 
 function parseJsonBlock(text) {
@@ -994,14 +991,14 @@ function loadState() {
 function loadAiSettings() {
   try {
     const raw = window.localStorage.getItem(AI_SETTINGS_KEY);
-    if (!raw) return { apiKey: "", model: "gpt-5-mini" };
+    if (!raw) return { apiKey: "", model: "claude-sonnet-4-20250514" };
     const parsed = JSON.parse(raw);
     return {
       apiKey: parsed.apiKey || "",
-      model: parsed.model || "gpt-5-mini"
+      model: parsed.model || "claude-sonnet-4-20250514"
     };
   } catch {
-    return { apiKey: "", model: "gpt-5-mini" };
+    return { apiKey: "", model: "claude-sonnet-4-20250514" };
   }
 }
 

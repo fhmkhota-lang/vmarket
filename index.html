@@ -52,26 +52,25 @@
           <article class="panel panel--settings">
             <div class="section-head">
               <div>
-                <p class="eyebrow">AI Setup</p>
-                <h3>Browser-based OpenAI access</h3>
+                <p class="eyebrow">Claude Setup</p>
+                <h3>Use a Claude API key directly in the browser</h3>
               </div>
             </div>
-
             <form class="form-grid" id="aiSettingsForm">
               <div class="field field--full">
-                <label for="apiKeyInput">OpenAI API key</label>
-                <input id="apiKeyInput" type="password" placeholder="sk-..." autocomplete="off">
-                <p class="helper">Stored only in this browser. GitHub Pages cannot securely hide server-side secrets.</p>
+                <label for="apiKeyInput">Claude API key</label>
+                <input id="apiKeyInput" type="password" placeholder="sk-ant-..." autocomplete="off">
+                <p class="helper">Stored only in this browser. Because this is a static GitHub Pages app, the key is not protected by a backend.</p>
               </div>
               <div class="field">
-                <label for="modelSelect">Model</label>
+                <label for="modelSelect">Claude model</label>
                 <select id="modelSelect">
-                  <option value="gpt-5-mini">gpt-5-mini</option>
-                  <option value="gpt-5">gpt-5</option>
+                  <option value="claude-sonnet-4-20250514">claude-sonnet-4-20250514</option>
+                  <option value="claude-opus-4-1-20250805">claude-opus-4-1-20250805</option>
                 </select>
               </div>
               <div class="field field--actions">
-                <button class="button button--solid" type="submit">Save AI Settings</button>
+                <button class="button button--solid" type="submit">Save Claude Settings</button>
               </div>
             </form>
           </article>
@@ -141,7 +140,7 @@
               </div>
               <div class="field field--full field--actions">
                 <button class="button button--solid" type="submit" id="generateStrategyBtn">Generate Strategy</button>
-                <p class="helper" id="strategyStatusText">No strategy generated yet.</p>
+                <p class="helper" id="strategyStatusText">Fill in the intake and generate a Claude-powered strategy.</p>
               </div>
             </form>
           </article>
