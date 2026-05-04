@@ -53,6 +53,8 @@ const els = {
   aiSettingsForm: document.getElementById("aiSettingsForm"),
   apiKeyInput: document.getElementById("apiKeyInput"),
   modelSelect: document.getElementById("modelSelect"),
+  saveClaudeSettingsBtn: document.getElementById("saveClaudeSettingsBtn"),
+  aiSettingsStatusText: document.getElementById("aiSettingsStatusText"),
   strategyForm: document.getElementById("strategyForm"),
   strategyBrand: document.getElementById("strategyBrand"),
   strategyPlatformTags: document.getElementById("strategyPlatformTags"),
@@ -95,13 +97,10 @@ function bindEvents() {
 
   els.aiSettingsForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    aiSettings.apiKey = els.apiKeyInput.value.trim();
-    aiSettings.model = els.modelSelect.value;
-    persistAiSettings();
-    els.strategyStatusText.textContent = aiSettings.apiKey
-      ? "Claude settings saved in this browser."
-      : "Claude key cleared. You can still save campaign intake manually.";
+    saveClaudeSettings();
   });
+
+  els.saveClaudeSettingsBtn.addEventListener("click", saveClaudeSettings);
 
   els.addStrategyPlatformBtn.addEventListener("click", addStrategyPlatformFromInput);
   els.strategyPlatformInput.addEventListener("keydown", (event) => {
@@ -162,6 +161,21 @@ function hydrateBrandOptions() {
 function hydrateAiSettings() {
   els.apiKeyInput.value = aiSettings.apiKey || "";
   els.modelSelect.value = aiSettings.model || "claude-sonnet-4-20250514";
+  els.aiSettingsStatusText.textContent = aiSettings.apiKey
+    ? "Claude settings are already saved in this browser."
+    : "Add your Claude API key, then save settings here.";
+}
+
+function saveClaudeSettings() {
+  aiSettings.apiKey = els.apiKeyInput.value.trim();
+  aiSettings.model = els.modelSelect.value;
+  persistAiSettings();
+  els.aiSettingsStatusText.textContent = aiSettings.apiKey
+    ? "Claude settings saved in this browser."
+    : "Claude key cleared. You can still save campaign intake manually.";
+  els.strategyStatusText.textContent = aiSettings.apiKey
+    ? "Claude is ready. Fill in the intake and generate strategy."
+    : "Fill in the intake and generate a Claude-powered strategy.";
 }
 
 function renderHero() {
